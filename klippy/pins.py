@@ -60,6 +60,27 @@ Arduino_Due_analog = [
     "PB19", "PB20"
 ]
 
+Adafruit_GrandCentral = [
+    "PB25", "PB24", "PC18", "PC19", "PC20",
+    "PC21", "PD20", "PD21", "PB18", "PB2",
+    "PB22", "PB23", "PB0", "PB1", "PB16",
+    "PB17", "PC22", "PC23", "PB12", "PB13",
+    "PB20", "PB21", "PD12", "PA15", "PC17",
+    "PC16", "PA12", "PA13", "PA14", "PB19",
+    "PA23", "PA22", "PA21", "PA20", "PA19",
+    "PA18", "PA17", "PA16", "PB15", "PB14",
+    "PC13", "PC12", "PC15", "PC14", "PC11",
+    "PC10", "PC6", "PC7", "PC4", "PC5",
+    "PD11", "PD8", "PD9", "PD10", "PA2",
+    "PA5", "PB3", "PC0", "PC1", "PC2",
+    "PC3", "PB4", "PB5", "PB6", "PB7",
+    "PB8", "PB9", "PA4", "PA6", "PA7"
+]
+Adafruit_GrandCentral_analog = [
+    "PA2", "PA5", "PB3", "PC0", "PC1", "PC2", "PC3", "PB4", "PB5", "PB6", "PB7",
+    "PB8", "PB9", "PA4", "PA6", "PA7"
+]
+
 
 Arduino_from_mcu = {
     "atmega168": (Arduino_standard, Arduino_analog_standard),
@@ -69,6 +90,7 @@ Arduino_from_mcu = {
     "atmega1280": (Arduino_mega, Arduino_analog_mega),
     "atmega2560": (Arduino_mega, Arduino_analog_mega),
     "sam3x8e": (Arduino_Due, Arduino_Due_analog),
+    "samd51p20a": (Adafruit_GrandCentral, Adafruit_GrandCentral_analog),
 }
 
 def get_aliases_arduino(mcu):
@@ -167,8 +189,7 @@ class PrinterPins:
         self.chips = {}
         self.active_pins = {}
         self.reserved_pins = {}
-    def lookup_pin(self, pin_desc, can_invert=False, can_pullup=False,
-                   share_type=None):
+    def parse_pin(self, pin_desc, can_invert=False, can_pullup=False):
         desc = pin_desc.strip()
         pullup = invert = 0
         if can_pullup and (desc.startswith('^') or desc.startswith('~')):
@@ -194,17 +215,23 @@ class PrinterPins:
             raise error("Invalid pin description '%s'\n"
                         "Format is: %s[chip_name:] pin_name" % (
                             pin_desc, format))
-        share_name = "%s:%s" % (chip_name, pin)
-        if share_name in self.active_pins:
-            pin_params = self.active_pins[share_name]
-            if share_type is None or share_type != pin_params['share_type']:
-                raise error("pin %s used multiple times in config" % (pin,))
-            if invert != pin_params['invert'] or pullup != pin_params['pullup']:
-                raise error("Shared pin %s must have same polarity" % (pin,))
-            return pin_params
         pin_params = {'chip': self.chips[chip_name], 'chip_name': chip_name,
-                      'pin': pin, 'share_type': share_type,
-                      'invert': invert, 'pullup': pullup}
+                      'pin': pin, 'invert': invert, 'pullup': pullup}
+        return pin_params
+    def lookup_pin(self, pin_desc, can_invert=False, can_pullup=False,
+                   share_type=None):
+        pin_params = self.parse_pin(pin_desc, can_invert, can_pullup)
+        pin = pin_params['pin']
+        share_name = "%s:%s" % (pin_params['chip_name'], pin)
+        if share_name in self.active_pins:
+            share_params = self.active_pins[share_name]
+            if share_type is None or share_type != share_params['share_type']:
+                raise error("pin %s used multiple times in config" % (pin,))
+            if (pin_params['invert'] != share_params['invert']
+                or pin_params['pullup'] != share_params['pullup']):
+                raise error("Shared pin %s must have same polarity" % (pin,))
+            return share_params
+        pin_params['share_type'] = share_type
         self.active_pins[share_name] = pin_params
         return pin_params
     def setup_pin(self, pin_type, pin_desc):
